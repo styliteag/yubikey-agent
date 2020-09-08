@@ -48,13 +48,17 @@ func main() {
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "\t\tRun the agent, listening on the UNIX socket at PATH.\n")
 		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "\tyubikey-agent -get-management-key\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "\t\tGet the (pin-protected) management key.")
+		fmt.Fprintf(os.Stderr, "\n")
 	}
 
 	socketPath := flag.String("l", "", "agent: path of the UNIX socket to listen on")
 	ed25519Flag := flag.Bool("ed25519", false, "setup: generate Ed25519 key")
 	resetFlag := flag.Bool("really-delete-all-piv-keys", false, "setup: reset the PIV applet")
 	setupFlag := flag.Bool("setup", false, "setup: configure a new YubiKey")
-	touchFlag := flag.String("touch-policy", "always", "setup: set the touch policy")
+	getManagementFlag := flag.Bool("get-management-key", false, "Get the (pin protected) management key")
 	flag.Parse()
 
 	touchPolicy := map[string]piv.TouchPolicy{
@@ -74,7 +78,9 @@ func main() {
 		if *resetFlag {
 			runReset(yk)
 		}
-		runSetup(yk, touchPolicy)
+		runSetup(yk)
+	} else if *getManagementFlag {
+		getManagementKey(connectForSetup())
 	} else {
 		if *socketPath == "" {
 			flag.Usage()
