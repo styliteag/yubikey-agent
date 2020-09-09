@@ -24,6 +24,7 @@ import (
 	"github.com/go-piv/piv-go/piv"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 // Version can be set at link time to override debug.BuildInfo.Main.Version,
@@ -65,7 +66,7 @@ func runReset(yk *piv.YubiKey) {
 	}
 }
 
-func runSetup(yk *piv.YubiKey, ed25519 bool) {
+func runSetup(yk *piv.YubiKey, touchPolicy piv.TouchPolicy) {
 	if _, err := yk.Certificate(piv.SlotAuthentication); err == nil {
 		log.Println("‼️  This YubiKey looks already setup")
 		log.Println("")
@@ -151,7 +152,7 @@ func runSetup(yk *piv.YubiKey, ed25519 bool) {
 	pub, err := yk.GenerateKey(key, piv.SlotAuthentication, piv.Key{
 		Algorithm:   alg,
 		PINPolicy:   piv.PINPolicyOnce,
-		TouchPolicy: piv.TouchPolicyAlways,
+		TouchPolicy: touchPolicy,
 	})
 	if err != nil {
 		log.Fatalln("Failed to generate key:", err)
