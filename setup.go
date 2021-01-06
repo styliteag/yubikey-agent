@@ -16,6 +16,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"log"
@@ -106,7 +107,7 @@ func runReset(yk *piv.YubiKey) {
 	}
 }
 
-func runSetup(yk *piv.YubiKey, touchPolicy piv.TouchPolicy, alg piv.Algorithm) {
+func runSetup(yk *piv.YubiKey, touchPolicy piv.TouchPolicy, alg piv.Algorithm, generateKeyOnComputerInsecurely bool) {
 	if _, err := yk.Certificate(piv.SlotAuthentication); err == nil {
 		log.Println("‼️  This YubiKey looks already setup")
 		log.Println("")
@@ -184,11 +185,76 @@ func runSetup(yk *piv.YubiKey, touchPolicy piv.TouchPolicy, alg piv.Algorithm) {
 		log.Fatalln("use --really-delete-all-piv-keys ⚠️")
 	}
 
-	pub, err := yk.GenerateKey(key, piv.SlotAuthentication, piv.Key{
+	var pub crypto.PublicKey
+
+	keyPolicy := piv.Key{
 		Algorithm:   alg,
 		PINPolicy:   piv.PINPolicyOnce,
 		TouchPolicy: touchPolicy,
-	})
+	}
+	if generateKeyOnComputerInsecurely {
+		var actualPriv crypto.Signer
+		if alg == piv.AlgorithmEC256 {
+			actualPriv, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		}
+		if alg == piv.AlgorithmEC384 {
+			actualPriv, err = ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+		}
+		if alg == piv.AlgorithmRSA1024 {
+			actualPriv, err = rsa.GenerateKey(rand.Reader, 1024)
+		}
+		if alg == piv.AlgorithmRSA2048 {
+			actualPriv, err = rsa.GenerateKey(rand.Reader, 2048)
+		}
+		if alg == piv.AlgorithmEd25519 {
+			// FIXME
+			actualPriv, err = rsa.GenerateKey(rand.Reader, 2048)
+		}
+
+		if err != nil {
+			log.Fatalln("Failed to generate the private key on computer:", err)
+		}
+		privateKeyBytes, err := x509.MarshalPKCS8PrivateKey(actualPriv)
+		if err != nil {
+			log.Fatalln("Failed to marshal the private key:", err)
+		}
+		privateKeyBlock := pem.Block{
+			Type:  "PRIVATE KEY",
+			Bytes: privateKeyBytes,
+		}
+		privateKeyEncoded := pem.EncodeToMemory(&privateKeyBlock)
+		if privateKeyEncoded == nil {
+			log.Fatalln("Failed to encode the private key")
+		}
+		log.Println("‼️  --generate-key-on-computer-insecurely was used.")
+		log.Println("This means that the private key is generated on the")
+		log.Println("computer instead of the hardware token.")
+		log.Println("")
+		log.Println("Generating the private key on the computer allows you")
+		log.Println("to create a backup of the key but also makes you less")
+		log.Println("secure as the private key can now be exfiltrated or")
+		log.Println("replaced with another key before being imported to the")
+		log.Println("hardware token. Such key cannot be considered")
+		log.Println("hardware-backed.")
+		log.Println("")
+		log.Println("If you don't know what you're doing don't use this key")
+		log.Println("and generate another one the default way securely.")
+		log.Println("")
+		log.Println("‼️  Your private SSH key (read the whole warning above):")
+		os.Stdout.Write(privateKeyEncoded)
+
+		err = yk.SetPrivateKeyInsecure(key, piv.SlotAuthentication, actualPriv, keyPolicy)
+		if err != nil {
+			log.Fatalln("Failed to import the key to the device:", err)
+		}
+		pub = actualPriv.Public()
+	} else {
+		pub, err = yk.GenerateKey(key, piv.SlotAuthentication, keyPolicy)
+		if err != nil {
+			log.Fatalln("Failed to generate key:", err)
+		}
+	}
+
 	if err != nil {
 		log.Fatalln("Failed to generate key:", err)
 	}

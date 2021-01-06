@@ -41,7 +41,7 @@ func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of yubikey-agent:\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "\tyubikey-agent -setup [-cardserial=0123456] [-touch-policy=always|cached|never] [-alg=RS2048|RSA1024|EC256|EC384|Ed25519]\n")
+		fmt.Fprintf(os.Stderr, "\tyubikey-agent -setup [-cardserial=0123456] [-touch-policy=always|cached|never] [-alg=RS2048|RSA1024|EC256|EC384|Ed25519] [-generate-key-on-computer-insecurely]\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "\t\tGenerate a new SSH key on the attached YubiKey.\n")
 		fmt.Fprintf(os.Stderr, "\n")
@@ -59,6 +59,7 @@ func main() {
 	cardFlag := flag.Uint("cardserial", 0, "Card: Slot of the Yubikey, if multiple Cards are connected")
 	algFlag := flag.String("alg", "RSA2048", "setup: Choose Key Type")
 	resetFlag := flag.Bool("really-delete-all-piv-keys", false, "setup: reset the PIV applet")
+	generateKeyInsecurelyFlag := flag.Bool("generate-key-on-computer-insecurely", false, "setup: generate the key on the computer instead on the hardware token, this allows creating a copy of the private key but also exposes it to exfiltration and manipulation")
 	setupFlag := flag.Bool("setup", false, "setup: configure a new YubiKey")
 	touchFlag := flag.String("touch-policy", "always", "setup: set the touch policy (always,cached,never)")
 	getManagementFlag := flag.Bool("get-management-key", false, "Get the (pin protected) management key")
@@ -91,7 +92,7 @@ func main() {
 		if *resetFlag {
 			runReset(yk)
 		}
-		runSetup(yk, touchPolicy, alg)
+		runSetup(yk, touchPolicy, alg, *generateKeyInsecurelyFlag)
 	} else if *getManagementFlag {
 		getManagementKey(connectForSetup(cardSerial))
 	} else {
@@ -330,7 +331,12 @@ func (a *Agent) signers() ([]ssh.Signer, error) {
 	priv, err := a.yk.PrivateKey(
 		piv.SlotAuthentication,
 		pk.(ssh.CryptoPublicKey).CryptoPublicKey(),
-		piv.KeyAuth{PINPrompt: a.getPIN},
+		// We need to specify PINPolicy manually here. If we don't, then it'll
+		// be tried to be inferred from the certificate atestation and that
+		// will fail if the key has been generated insecurely on the computer
+		// (there's a -setup switch for that) instead of on the hardware
+		// device.
+		piv.KeyAuth{PINPrompt: a.getPIN, PINPolicy: piv.PINPolicyOnce},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare private key: %w", err)
