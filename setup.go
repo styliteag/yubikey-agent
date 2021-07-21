@@ -8,8 +8,9 @@ package main
 
 import (
 	"bytes"
-	"crypto/ecdsa"
-	"crypto/elliptic"
+	//"crypto/ecdsa"
+	//"crypto/elliptic"
+	"crypto/rsa"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -137,15 +138,16 @@ func runSetup(yk *piv.YubiKey) {
 	}
 
 	pub, err := yk.GenerateKey(key, piv.SlotAuthentication, piv.Key{
-		Algorithm:   piv.AlgorithmEC256,
-		PINPolicy:   piv.PINPolicyOnce,
-		TouchPolicy: piv.TouchPolicyAlways,
+		Algorithm:   piv.AlgorithmRSA2048, // AlgorithmEC256 AlgorithmEC384 AlgorithmEd25519 AlgorithmRSA1024 AlgorithmRSA2048
+		PINPolicy:   piv.PINPolicyNever,
+		TouchPolicy: piv.TouchPolicyNever,
 	})
 	if err != nil {
 		log.Fatalln("Failed to generate key:", err)
 	}
 
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	//priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		log.Fatalln("Failed to generate parent key:", err)
 	}
