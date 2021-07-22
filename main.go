@@ -40,7 +40,7 @@ func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of yubikey-agent:\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "\tyubikey-agent -setup [-touch-policy=always|cached|never] [-ed25519]\n")
+		fmt.Fprintf(os.Stderr, "\tyubikey-agent -setup [-touch-policy=always|cached|never] [-alg=EC256,EC384,RSA1024,RSA2048,Ed25519]\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "\t\tGenerate a new SSH key on the attached YubiKey.\n")
 		fmt.Fprintf(os.Stderr, "\n")
@@ -55,7 +55,7 @@ func main() {
 	}
 
 	socketPath := flag.String("l", "", "agent: path of the UNIX socket to listen on")
-	ed25519Flag := flag.Bool("ed25519", false, "setup: generate Ed25519 key")
+	algFlag := flag.String("alg", "RSA2048", "setup: Choose Key Type")
 	resetFlag := flag.Bool("really-delete-all-piv-keys", false, "setup: reset the PIV applet")
 	setupFlag := flag.Bool("setup", false, "setup: configure a new YubiKey")
 	touchFlag := flag.String("touch-policy", "always", "setup: set the touch policy (always,cached,never)")
@@ -68,6 +68,14 @@ func main() {
 		"never":  piv.TouchPolicyNever,
 	}[*touchFlag]
 
+	alg := map[string]piv.Algorithm{
+		"EC256": piv.AlgorithmEC256,
+		"EC384": piv.AlgorithmEC384,
+		"RSA1024": piv.AlgorithmRSA1024,
+		"RSA2048": piv.AlgorithmRSA2048,
+		"Ed25519": piv.AlgorithmEd25519,
+	}[*algFlag]
+
 	if flag.NArg() > 0 || touchPolicy == 0 {
 		flag.Usage()
 		os.Exit(1)
@@ -79,7 +87,7 @@ func main() {
 		if *resetFlag {
 			runReset(yk)
 		}
-		runSetup(yk, touchPolicy, *ed25519Flag)
+		runSetup(yk, touchPolicy, alg)
 	} else if *getManagementFlag {
 		getManagementKey(connectForSetup())
 	} else {
