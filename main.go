@@ -24,6 +24,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -36,11 +37,13 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
+var cardSerial string
+
 func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of yubikey-agent:\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "\tyubikey-agent -setup [-touch-policy=always|cached|never] [-ed25519]\n")
+		fmt.Fprintf(os.Stderr, "\tyubikey-agent -setup [-cardserial=15454019] [-touch-policy=always|cached|never] [-alg=EC256|EC384|RSA1024|RSA2048|Ed25519]\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "\t\tGenerate a new SSH key on the attached YubiKey.\n")
 		fmt.Fprintf(os.Stderr, "\n")
@@ -55,18 +58,29 @@ func main() {
 	}
 
 	socketPath := flag.String("l", "", "agent: path of the UNIX socket to listen on")
-	ed25519Flag := flag.Bool("ed25519", false, "setup: generate Ed25519 key")
+	cardFlag := flag.String("cardserial", "", "Card: Slot of the Yubikey, if multiple Cards are connected")
+	algFlag := flag.String("alg", "RSA2048", "setup: Choose Key Type")
 	resetFlag := flag.Bool("really-delete-all-piv-keys", false, "setup: reset the PIV applet")
 	setupFlag := flag.Bool("setup", false, "setup: configure a new YubiKey")
 	touchFlag := flag.String("touch-policy", "always", "setup: set the touch policy (always,cached,never)")
 	getManagementFlag := flag.Bool("get-management-key", false, "Get the (pin protected) management key")
 	flag.Parse()
 
+	cardSerial := *cardFlag
+
 	touchPolicy := map[string]piv.TouchPolicy{
 		"always": piv.TouchPolicyAlways,
 		"cached": piv.TouchPolicyCached,
 		"never":  piv.TouchPolicyNever,
 	}[*touchFlag]
+
+	alg := map[string]piv.Algorithm{
+		"EC256":   piv.AlgorithmEC256,
+		"EC384":   piv.AlgorithmEC384,
+		"RSA1024": piv.AlgorithmRSA1024,
+		"RSA2048": piv.AlgorithmRSA2048,
+		"Ed25519": piv.AlgorithmEd25519,
+	}[*algFlag]
 
 	if flag.NArg() > 0 || touchPolicy == 0 {
 		flag.Usage()
@@ -75,13 +89,13 @@ func main() {
 
 	if *setupFlag {
 		log.SetFlags(0)
-		yk := connectForSetup()
+		yk := connectForSetup(cardSerial)
 		if *resetFlag {
 			runReset(yk)
 		}
-		runSetup(yk, touchPolicy, *ed25519Flag)
+		runSetup(yk, touchPolicy, alg)
 	} else if *getManagementFlag {
-		getManagementKey(connectForSetup())
+		getManagementKey(connectForSetup(cardSerial))
 	} else {
 		if *socketPath == "" {
 			flag.Usage()
@@ -182,6 +196,13 @@ func (a *Agent) ensureYK() error {
 }
 
 func (a *Agent) connectToYK() (*piv.YubiKey, error) {
+	cardNr := 999
+
+	if cardSerial == "" {
+		// Use First Card
+		cardNr = 0
+	}
+
 	cards, err := piv.Cards()
 	if err != nil {
 		return nil, err
@@ -189,8 +210,37 @@ func (a *Agent) connectToYK() (*piv.YubiKey, error) {
 	if len(cards) == 0 {
 		return nil, errors.New("no YubiKey detected")
 	}
-	// TODO: support multiple YubiKeys.
-	yk, err := piv.Open(cards[0])
+	// support multiple YubiKeys.
+	for i, card := range cards {
+		if strings.Contains(strings.ToLower(card), "yubikey") {
+			yk, err := piv.Open(card)
+			if err != nil {
+				log.Printf("unable to open yubikey: %s\n", cards)
+				continue
+			}
+			serial, err := yk.Serial()
+			if err != nil {
+				log.Printf("unable to get yubikey serial number: %v\n", serial)
+				continue
+			}
+			log.Printf("Card: %v, SN: %v, Name: %v\n", i, serial, card)
+			if strconv.FormatInt(int64(serial), 10) == cardSerial {
+				cardNr = i
+				//log.Printf("Found Card: %v, SN: %v\n", cardNr, serial)
+			}
+			yk.Close()
+		}
+	}
+	if cardNr == 999 {
+		// No Card Found
+		log.Printf("No Card with Serial: %v\n", cardSerial)
+	}
+	if cardNr+1 > len(cards) {
+		log.Printf("No Card: %v\n", cardNr)
+	}
+	//log.Printf("Connecting to Card %v", cardNr)
+
+	yk, err := piv.Open(cards[cardNr])
 	if err != nil {
 		return nil, err
 	}

@@ -8,9 +8,11 @@ package main
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
@@ -20,12 +22,14 @@ import (
 	"math/big"
 	"os"
 	"runtime/debug"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-piv/piv-go/piv"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/term"
 	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 // Version can be set at link time to override debug.BuildInfo.Main.Version,
@@ -44,7 +48,14 @@ func init() {
 	Version = "(unknown version)"
 }
 
-func connectForSetup() *piv.YubiKey {
+func connectForSetup(cardSerial string) *piv.YubiKey {
+	cardNr := 999
+
+	if cardSerial == "" {
+		// Use First Card
+		cardNr = 0
+	}
+
 	cards, err := piv.Cards()
 	if err != nil {
 		log.Fatalln("Failed to enumerate tokens:", err)
@@ -52,8 +63,37 @@ func connectForSetup() *piv.YubiKey {
 	if len(cards) == 0 {
 		log.Fatalln("No YubiKeys detected!")
 	}
-	// TODO: support multiple YubiKeys.
-	yk, err := piv.Open(cards[0])
+	// Support multiple YubiKeys.
+	for i, card := range cards {
+		if strings.Contains(strings.ToLower(card), "yubikey") {
+			yk, err := piv.Open(card)
+			if err != nil {
+				log.Printf("unable to open yubikey: %s\n", cards)
+				continue
+			}
+			serial, err := yk.Serial()
+			if err != nil {
+				log.Printf("unable to get yubikey serial number: %v\n", serial)
+				continue
+			}
+			log.Printf("Card: %v, SN: %v, Name: %v\n", i, serial, card)
+			if strconv.FormatInt(int64(serial), 10) == cardSerial {
+				cardNr = i
+				log.Printf("Found Card: %v, SN: %v\n", cardNr, serial)
+			}
+			yk.Close()
+
+		}
+	}
+	if cardNr == 999 {
+		// No Card Found
+		log.Fatalf("No Card with Serial: %v\n", cardSerial)
+	}
+	if cardNr+1 > len(cards) {
+		log.Fatalf("No Card: %v\n", cardNr)
+	}
+	log.Printf("Connecting to Card %v", cardNr)
+	yk, err := piv.Open(cards[cardNr])
 	if err != nil {
 		log.Fatalln("Failed to connect to the YubiKey:", err)
 	}
@@ -67,7 +107,7 @@ func runReset(yk *piv.YubiKey) {
 	}
 }
 
-func runSetup(yk *piv.YubiKey, touchPolicy piv.TouchPolicy, ed25519 bool) {
+func runSetup(yk *piv.YubiKey, touchPolicy piv.TouchPolicy, alg piv.Algorithm) {
 	if _, err := yk.Certificate(piv.SlotAuthentication); err == nil {
 		log.Println("‼️  This YubiKey looks already setup")
 		log.Println("")
@@ -145,11 +185,6 @@ func runSetup(yk *piv.YubiKey, touchPolicy piv.TouchPolicy, ed25519 bool) {
 		log.Fatalln("use --really-delete-all-piv-keys ⚠️")
 	}
 
-	alg := piv.AlgorithmEC256
-	if ed25519 {
-		// hack it in, this relies on the piv-go patch
-		alg = piv.AlgorithmEd25519
-	}
 	pub, err := yk.GenerateKey(key, piv.SlotAuthentication, piv.Key{
 		Algorithm:   alg,
 		PINPolicy:   piv.PINPolicyOnce,
@@ -159,7 +194,24 @@ func runSetup(yk *piv.YubiKey, touchPolicy piv.TouchPolicy, ed25519 bool) {
 		log.Fatalln("Failed to generate key:", err)
 	}
 
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	var priv crypto.Signer
+	if alg == piv.AlgorithmEC256 {
+		priv, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	}
+	if alg == piv.AlgorithmEC384 {
+		priv, err = ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	}
+	if alg == piv.AlgorithmRSA1024 {
+		priv, err = rsa.GenerateKey(rand.Reader, 1024)
+	}
+	if alg == piv.AlgorithmRSA2048 {
+		priv, err = rsa.GenerateKey(rand.Reader, 2048)
+	}
+	if alg == piv.AlgorithmEd25519 {
+		// FIXME
+		priv, err = rsa.GenerateKey(rand.Reader, 2048)
+	}
+
 	if err != nil {
 		log.Fatalln("Failed to generate parent key:", err)
 	}
