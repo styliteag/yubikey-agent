@@ -40,7 +40,7 @@ func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of yubikey-agent:\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "\tyubikey-agent -setup [-touch-policy=always|cached|never]\n")
+		fmt.Fprintf(os.Stderr, "\tyubikey-agent -setup [-touch-policy=always|cached|never] [-ed25519]\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "\t\tGenerate a new SSH key on the attached YubiKey.\n")
 		fmt.Fprintf(os.Stderr, "\n")
@@ -58,6 +58,7 @@ func main() {
 	ed25519Flag := flag.Bool("ed25519", false, "setup: generate Ed25519 key")
 	resetFlag := flag.Bool("really-delete-all-piv-keys", false, "setup: reset the PIV applet")
 	setupFlag := flag.Bool("setup", false, "setup: configure a new YubiKey")
+	touchFlag := flag.String("touch-policy", "always", "setup: set the touch policy (always,cached,never)")
 	getManagementFlag := flag.Bool("get-management-key", false, "Get the (pin protected) management key")
 	flag.Parse()
 
@@ -78,7 +79,7 @@ func main() {
 		if *resetFlag {
 			runReset(yk)
 		}
-		runSetup(yk)
+		runSetup(yk, touchPolicy, *ed25519Flag)
 	} else if *getManagementFlag {
 		getManagementKey(connectForSetup())
 	} else {
