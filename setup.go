@@ -8,9 +8,11 @@ package main
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
@@ -24,8 +26,8 @@ import (
 
 	"github.com/go-piv/piv-go/piv"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/term"
 	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 // Version can be set at link time to override debug.BuildInfo.Main.Version,
@@ -67,7 +69,7 @@ func runReset(yk *piv.YubiKey) {
 	}
 }
 
-func runSetup(yk *piv.YubiKey, touchPolicy piv.TouchPolicy, ed25519 bool) {
+func runSetup(yk *piv.YubiKey, touchPolicy piv.TouchPolicy, alg piv.Algorithm) {
 	if _, err := yk.Certificate(piv.SlotAuthentication); err == nil {
 		log.Println("‼️  This YubiKey looks already setup")
 		log.Println("")
@@ -145,11 +147,6 @@ func runSetup(yk *piv.YubiKey, touchPolicy piv.TouchPolicy, ed25519 bool) {
 		log.Fatalln("use --really-delete-all-piv-keys ⚠️")
 	}
 
-	alg := piv.AlgorithmEC256
-	if ed25519 {
-		// hack it in, this relies on the piv-go patch
-		alg = piv.AlgorithmEd25519
-	}
 	pub, err := yk.GenerateKey(key, piv.SlotAuthentication, piv.Key{
 		Algorithm:   alg,
 		PINPolicy:   piv.PINPolicyOnce,
@@ -159,7 +156,24 @@ func runSetup(yk *piv.YubiKey, touchPolicy piv.TouchPolicy, ed25519 bool) {
 		log.Fatalln("Failed to generate key:", err)
 	}
 
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	var priv crypto.Signer
+	if alg == piv.AlgorithmEC256 {
+		priv, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	}
+	if alg == piv.AlgorithmEC384 {
+		priv, err = ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	}
+	if alg == piv.AlgorithmRSA1024 {
+		priv, err = rsa.GenerateKey(rand.Reader, 1024)
+	}
+	if alg == piv.AlgorithmRSA2048 {
+		priv, err = rsa.GenerateKey(rand.Reader, 2048)
+	}
+	if alg == piv.AlgorithmEd25519 {
+		// FIXME
+		priv, err = rsa.GenerateKey(rand.Reader, 2048)
+	}
+
 	if err != nil {
 		log.Fatalln("Failed to generate parent key:", err)
 	}
