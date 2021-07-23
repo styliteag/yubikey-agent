@@ -36,31 +36,36 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
+var cardSerial uint32
+
 func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of yubikey-agent:\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "\tyubikey-agent -setup [-touch-policy=always|cached|never] [-alg=RS2048|RSA1024|EC256|EC384|Ed25519]\n")
+		fmt.Fprintf(os.Stderr, "\tyubikey-agent -setup [-cardserial=0123456] [-touch-policy=always|cached|never] [-alg=RS2048|RSA1024|EC256|EC384|Ed25519]\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "\t\tGenerate a new SSH key on the attached YubiKey.\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "\tyubikey-agent -l PATH\n")
+		fmt.Fprintf(os.Stderr, "\tyubikey-agent -l PATH [-cardserial=0123456]\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "\t\tRun the agent, listening on the UNIX socket at PATH.\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "\tyubikey-agent -get-management-key\n")
+		fmt.Fprintf(os.Stderr, "\tyubikey-agent -get-management-key [-cardserial=0123456]\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "\t\tGet the (pin-protected) management key.")
 		fmt.Fprintf(os.Stderr, "\n")
 	}
 
 	socketPath := flag.String("l", "", "agent: path of the UNIX socket to listen on")
+	cardFlag := flag.Uint("cardserial", 0, "Card: Slot of the Yubikey, if multiple Cards are connected")
 	algFlag := flag.String("alg", "RSA2048", "setup: Choose Key Type")
 	resetFlag := flag.Bool("really-delete-all-piv-keys", false, "setup: reset the PIV applet")
 	setupFlag := flag.Bool("setup", false, "setup: configure a new YubiKey")
 	touchFlag := flag.String("touch-policy", "always", "setup: set the touch policy (always,cached,never)")
 	getManagementFlag := flag.Bool("get-management-key", false, "Get the (pin protected) management key")
 	flag.Parse()
+
+	cardSerial = uint32(*cardFlag)
 
 	touchPolicy := map[string]piv.TouchPolicy{
 		"always": piv.TouchPolicyAlways,
@@ -83,13 +88,13 @@ func main() {
 
 	if *setupFlag {
 		log.SetFlags(0)
-		yk := connectForSetup()
+		yk := connectForSetup(cardSerial)
 		if *resetFlag {
 			runReset(yk)
 		}
 		runSetup(yk, touchPolicy, alg)
 	} else if *getManagementFlag {
-		getManagementKey(connectForSetup())
+		getManagementKey(connectForSetup(cardSerial))
 	} else {
 		if *socketPath == "" {
 			flag.Usage()
@@ -186,10 +191,28 @@ func (a *Agent) ensureYK() error {
 		}
 		a.yk = yk
 	}
+	serial, err := a.yk.Serial()
+	if err != nil {
+		log.Printf("unable to get yubikey serial number: %v\n", serial)
+		return err
+	}
+	//log.Printf("Serial: %v, Looking for %v\n", serial, cardSerial)
+	if serial != cardSerial {
+		log.Printf("Serial does not match, returning Err\n")
+		a.yk.Close()
+		return err //log.Printf("Found Card: %v, SN: %v\n", cardNr, serial)
+	}
 	return nil
 }
 
 func (a *Agent) connectToYK() (*piv.YubiKey, error) {
+	cardNr := 999
+
+	if cardSerial == 0 {
+		// Use First Card
+		cardNr = 0
+	}
+
 	cards, err := piv.Cards()
 	if err != nil {
 		return nil, err
@@ -197,8 +220,37 @@ func (a *Agent) connectToYK() (*piv.YubiKey, error) {
 	if len(cards) == 0 {
 		return nil, errors.New("no YubiKey detected")
 	}
-	// TODO: support multiple YubiKeys.
-	yk, err := piv.Open(cards[0])
+	// support multiple YubiKeys.
+	for i, card := range cards {
+		if strings.Contains(strings.ToLower(card), "yubikey") {
+			yk, err := piv.Open(card)
+			if err != nil {
+				log.Printf("unable to open yubikey: %s\n", cards)
+				continue
+			}
+			serial, err := yk.Serial()
+			if err != nil {
+				log.Printf("unable to get yubikey serial number: %v\n", serial)
+				continue
+			}
+			log.Printf("Card: %v, SN: %v, Name: %v\n", i, serial, card)
+			if serial == cardSerial {
+				cardNr = i
+				//log.Printf("Found Card: %v, SN: %v\n", cardNr, serial)
+			}
+			yk.Close()
+		}
+	}
+	if cardNr == 999 {
+		// No Card Found
+		log.Printf("No Card with Serial: %v\n", cardSerial)
+	}
+	if cardNr+1 > len(cards) {
+		return nil, fmt.Errorf("Card %v not Found", cardSerial)
+	}
+	//log.Printf("Connecting to Card %v", cardNr)
+
+	yk, err := piv.Open(cards[cardNr])
 	if err != nil {
 		return nil, err
 	}

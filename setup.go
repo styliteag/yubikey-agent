@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"os"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/go-piv/piv-go/piv"
@@ -46,7 +47,14 @@ func init() {
 	Version = "(unknown version)"
 }
 
-func connectForSetup() *piv.YubiKey {
+func connectForSetup(cardSerial uint32) *piv.YubiKey {
+	cardNr := 999
+
+	if cardSerial == 0 {
+		// Use First Card
+		cardNr = 0
+	}
+
 	cards, err := piv.Cards()
 	if err != nil {
 		log.Fatalln("Failed to enumerate tokens:", err)
@@ -54,8 +62,37 @@ func connectForSetup() *piv.YubiKey {
 	if len(cards) == 0 {
 		log.Fatalln("No YubiKeys detected!")
 	}
-	// TODO: support multiple YubiKeys.
-	yk, err := piv.Open(cards[0])
+	// Support multiple YubiKeys.
+	for i, card := range cards {
+		if strings.Contains(strings.ToLower(card), "yubikey") {
+			yk, err := piv.Open(card)
+			if err != nil {
+				log.Printf("unable to open yubikey: %s\n", cards)
+				continue
+			}
+			serial, err := yk.Serial()
+			if err != nil {
+				log.Printf("unable to get yubikey serial number: %v\n", serial)
+				continue
+			}
+			log.Printf("Card: %v, SN: %v, Name: %v\n", i, serial, card)
+			if serial == cardSerial {
+				cardNr = i
+				log.Printf("Found Card: %v, SN: %v\n", cardNr, serial)
+			}
+			yk.Close()
+
+		}
+	}
+	if cardNr == 999 {
+		// No Card Found
+		log.Fatalf("No Card with Serial: %v\n", cardSerial)
+	}
+	if cardNr+1 > len(cards) {
+		log.Fatalf("NO Card: %v\n", cardNr)
+	}
+	log.Printf("Connecting to Card %v", cardNr)
+	yk, err := piv.Open(cards[cardNr])
 	if err != nil {
 		log.Fatalln("Failed to connect to the YubiKey:", err)
 	}
