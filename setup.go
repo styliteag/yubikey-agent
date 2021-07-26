@@ -107,7 +107,7 @@ func runReset(yk *piv.YubiKey) {
 	}
 }
 
-func runSetup(yk *piv.YubiKey, touchPolicy piv.TouchPolicy, alg piv.Algorithm, generateKeyOnComputerInsecurely bool) {
+func runSetup(yk *piv.YubiKey, touchPolicy piv.TouchPolicy, pinPolicy piv.PINPolicy, alg piv.Algorithm, generateKeyOnComputerInsecurely bool) {
 	if _, err := yk.Certificate(piv.SlotAuthentication); err == nil {
 		log.Println("‼️  This YubiKey looks already setup")
 		log.Println("")
@@ -189,7 +189,7 @@ func runSetup(yk *piv.YubiKey, touchPolicy piv.TouchPolicy, alg piv.Algorithm, g
 
 	keyPolicy := piv.Key{
 		Algorithm:   alg,
-		PINPolicy:   piv.PINPolicyOnce,
+		PINPolicy:   pinPolicy,
 		TouchPolicy: touchPolicy,
 	}
 	if generateKeyOnComputerInsecurely {

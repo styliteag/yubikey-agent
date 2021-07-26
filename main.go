@@ -41,7 +41,7 @@ func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of yubikey-agent:\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "\tyubikey-agent -setup [-cardserial=0123456] [-touch-policy=always|cached|never] [-alg=RS2048|RSA1024|EC256|EC384|Ed25519] [-generate-key-on-computer-insecurely]\n")
+		fmt.Fprintf(os.Stderr, "\tyubikey-agent -setup [-cardserial=0123456] [-touch-policy=always|cached|never] [-pin-policy=always|once|never] [-alg=RS2048|RSA1024|EC256|EC384|Ed25519] [-generate-key-on-computer-insecurely]\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "\t\tGenerate a new SSH key on the attached YubiKey.\n")
 		fmt.Fprintf(os.Stderr, "\n")
@@ -62,6 +62,7 @@ func main() {
 	generateKeyInsecurelyFlag := flag.Bool("generate-key-on-computer-insecurely", false, "setup: generate the key on the computer instead on the hardware token, this allows creating a copy of the private key but also exposes it to exfiltration and manipulation")
 	setupFlag := flag.Bool("setup", false, "setup: configure a new YubiKey")
 	touchFlag := flag.String("touch-policy", "always", "setup: set the touch policy (always,cached,never)")
+	pinFlag := flag.String("pin-policy", "once", "setup: set the touch policy (always,once,never)")
 	getManagementFlag := flag.Bool("get-management-key", false, "Get the (pin protected) management key")
 	flag.Parse()
 
@@ -72,6 +73,12 @@ func main() {
 		"cached": piv.TouchPolicyCached,
 		"never":  piv.TouchPolicyNever,
 	}[*touchFlag]
+
+	pinPolicy := map[string]piv.PINPolicy{
+		"always": piv.PINPolicyAlways,
+		"once":   piv.PINPolicyOnce,
+		"never":  piv.PINPolicyNever,
+	}[*pinFlag]
 
 	alg := map[string]piv.Algorithm{
 		"EC256":   piv.AlgorithmEC256,
@@ -92,7 +99,7 @@ func main() {
 		if *resetFlag {
 			runReset(yk)
 		}
-		runSetup(yk, touchPolicy, alg, *generateKeyInsecurelyFlag)
+		runSetup(yk, touchPolicy, pinPolicy, alg, *generateKeyInsecurelyFlag)
 	} else if *getManagementFlag {
 		getManagementKey(connectForSetup(cardSerial))
 	} else {
