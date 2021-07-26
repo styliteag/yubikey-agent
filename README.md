@@ -114,6 +114,18 @@ killall -HUP yubikey-agent
 
 This does not affect the FIDO2 functionality.
 
+### Changing PIN and PUK
+
+Use YubiKey Manager to change the PIN and PUK.
+
+`yubikey-agent -setup` sets the PUK to the same value as the PIN.
+
+```
+killall -HUP yubikey-agent
+ykman piv access change-pin
+ykman piv access change-puk
+```
+
 ### Unblocking the PIN with the PUK
 
 If the wrong PIN is entered incorrectly three times in a row, YubiKey Manager can be used to unlock it.
@@ -124,7 +136,7 @@ If the wrong PIN is entered incorrectly three times in a row, YubiKey Manager ca
 ykman piv unblock-pin
 ```
 
-If the PUK is also entered incorrectly three times, the key is permanently irrecoverable. The YubiKey PIV applet can be reset with `yubikey-agent -setup --really-delete-all-piv-keys`.
+If the PUK is also entered incorrectly three times, the key is permanently irrecoverable. The YubiKey PIV applet can be reset with `yubikey-agent --setup --really-delete-all-piv-keys`.
 
 ### Retrieving the management key
 
@@ -142,15 +154,15 @@ In practice, any PIV token with an RSA or ECDSA P-256 key and certificate in the
 
 #### Native FIDO2
 
-Recent versions of OpenSSH [support using FIDO2 tokens as keys](https://buttondown.email/cryptography-dispatches/archive/cryptography-dispatches-openssh-82-just-works/). Since those are their own key type, they require server-side support, which is currently not available in Debian stable or on GitHub.
+Recent versions of OpenSSH [support using FIDO2 tokens directly](https://buttondown.email/cryptography-dispatches/archive/cryptography-dispatches-openssh-82-just-works/). Since those are their own key type, they require server-side support, which has only recently reached Debian and [GitHub](https://www.yubico.com/blog/github-now-supports-ssh-security-keys/).
 
-FIDO2 keys also usually don't require a PIN, but depending on the token can require a private key file. `yubikey-agent` keys can be ported to a different machine simply by plugging in the YubiKey.
+FIDO2 SSH keys by default don't require a PIN, and require a private key file, acting more like a second factor. `yubikey-agent` keys always require PINs and can be ported to a different machine simply by plugging in the YubiKey. (With recent enough tokens such as a YubiKey 5, a similar setup can be achieved by using the `verify-required` and `resident` options, after setting a FIDO2 PIN with YubiKey Manager: the private key file will still be required, but it can be regenerated from the YubiKey.)
 
 #### `gpg-agent`
 
 `gpg-agent` can act as an `ssh-agent`, and it can use keys stored on the PGP applet of a YubiKey.
 
-This requires a finicky setup process dealing with PGP keys and the `gpg` UX, and seems to lose track of the YubiKey and require restarting all the time. Frankly, I had enough of PGP and GnuPG.
+This requires a finicky setup process dealing with PGP keys and the `gpg` UX, and seems to lose track of the YubiKey and require restarting all the time. Frankly, I've also had enough of PGP and GnuPG.
 
 #### `ssh-agent` and PKCS#11
 
@@ -162,9 +174,9 @@ The ssh-agent that ships with macOS (which is pretty cool, as it starts on deman
 
 `/usr/lib/ssh-keychain.dylib` works out of the box, but only with RSA keys. Key generation is undocumented.
 
-#### SeKey
+#### Secretive and SeKey
 
-[SeKey](https://github.com/sekey/sekey) is a similar project that uses the Secure Enclave to store the private key and Touch ID for authorization.
+[Secretive](https://github.com/maxgoedjen/secretive) and [SeKey](https://github.com/sekey/sekey) are similar projects that use the Secure Enclave to store the private key and Touch ID for authorization. The Secure Enclave has so far a worse security track record compared to YubiKeys.
 
 #### `pivy-agent`
 
