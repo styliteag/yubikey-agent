@@ -193,7 +193,7 @@ func (a *Agent) ensureYK() error {
 		return err
 	}
 	//log.Printf("Serial: %v, Looking for %v\n", serial, cardSerial)
-	if serial != cardSerial {
+	if cardSerial != 0 && serial != cardSerial {
 		log.Printf("Serial does not match, returning Err\n")
 		a.yk.Close()
 		return err //log.Printf("Found Card: %v, SN: %v\n", cardNr, serial)
