@@ -343,7 +343,9 @@ func (a *Agent) signers() ([]ssh.Signer, error) {
 		// will fail if the key has been generated insecurely on the computer
 		// (there's a -setup switch for that) instead of on the hardware
 		// device.
-		piv.KeyAuth{PINPrompt: a.getPIN, PINPolicy: piv.PINPolicyOnce},
+		// piv.KeyAuth{PINPrompt: a.getPIN, PINPolicy: piv.PINPolicyOnce},
+		// FIXME: TODO: Does this work with insecurely generated Keys?
+		piv.KeyAuth{PINPrompt: a.getPIN},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare private key: %w", err)
