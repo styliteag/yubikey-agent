@@ -36,16 +36,17 @@ import (
 )
 
 var cardSerial uint32
+var name string
 
 func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of yubikey-agent:\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "\tyubikey-agent -setup [-cardserial=0123456] [-touch-policy=always|cached|never] [-pin-policy=always|once|never] [-alg=RS2048|RSA1024|EC256|EC384|Ed25519] [-generate-key-on-computer-insecurely]\n")
+		fmt.Fprintf(os.Stderr, "\tyubikey-agent -setup [-cardserial=0123456] [-touch-policy=always|cached|never] [-pin-policy=always|once|never] [-alg=RSA2048|RSA1024|EC256|EC384|Ed25519] [-generate-key-on-computer-insecurely]\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "\t\tGenerate a new SSH key on the attached YubiKey.\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "\tyubikey-agent -l PATH [-cardserial=0123456]\n")
+		fmt.Fprintf(os.Stderr, "\tyubikey-agent -l PATH [-cardserial=0123456] [-name=YubiKey]\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "\t\tRun the agent, listening on the UNIX socket at PATH.\n")
 		fmt.Fprintf(os.Stderr, "\n")
@@ -63,10 +64,13 @@ func main() {
 	setupFlag := flag.Bool("setup", false, "setup: configure a new YubiKey")
 	touchFlag := flag.String("touch-policy", "always", "setup: set the touch policy (always,cached,never)")
 	pinFlag := flag.String("pin-policy", "once", "setup: set the touch policy (always,once,never)")
+	nameFlag := flag.String("name", "PIV Slot 9a", "name to show as key comment")
 	getManagementFlag := flag.Bool("get-management-key", false, "Get the (pin protected) management key")
 	flag.Parse()
 
 	cardSerial = uint32(*cardFlag)
+
+	name = string(*nameFlag)
 
 	touchPolicy := map[string]piv.TouchPolicy{
 		"always": piv.TouchPolicyAlways,
@@ -297,7 +301,7 @@ func (a *Agent) List() ([]*agent.Key, error) {
 	return []*agent.Key{{
 		Format:  pk.Type(),
 		Blob:    pk.Marshal(),
-		Comment: fmt.Sprintf("YubiKey #%d PIV Slot 9a", a.serial),
+		Comment: fmt.Sprintf("YubiKey #%d %s", a.serial, name),
 	}}, nil
 }
 
